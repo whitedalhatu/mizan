@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: Georgia, "Times New Roman", serif;
+  --font-body: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+  /* --brand, --brand-deep, --brand-mist, --accent, --accent-soft are written at
+     runtime by the root layout from platform_settings. Tailwind config carries
+     fallback hex for each, so the app is never unstyled. */
+  --paper: #FAFAF8;
+  --ink: #1B1B19;
+}
+
+body {
+  @apply bg-paper text-ink font-body antialiased;
+}
+
+.rule-accent {
+  border-bottom: 2px solid var(--accent, #C77D1A);
+  padding-bottom: 0.35rem;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent, #C77D1A);
+  outline-offset: 2px;
+}
