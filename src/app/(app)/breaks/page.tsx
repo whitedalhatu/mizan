@@ -1,13 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
-import { ActionForm } from "../Forms";
-import { BreakForm } from "./BreakForm";
+import { ActionForm, PageHeader, Card, EmptyState } from "../ui";
+import { NewBreakButton } from "./NewBreakButton";
 import { createBreak, deleteBreak } from "./actions";
 
 const DAY_KEYS: [string, string][] = [
   ["runs_mon", "Mon"], ["runs_tue", "Tue"], ["runs_wed", "Wed"], ["runs_thu", "Thu"],
   ["runs_fri", "Fri"], ["runs_sat", "Sat"], ["runs_sun", "Sun"],
 ];
-
 function daysLabel(b: Record<string, unknown>): string {
   const on = DAY_KEYS.filter(([k]) => b[k]).map(([, l]) => l);
   if (on.length === 7) return "Every day";
@@ -24,34 +23,24 @@ export default async function BreaksPage() {
     .order("start_time");
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="font-display text-3xl text-brand rule-accent inline-block">Commercial breaks</h1>
-        <p className="text-sm text-neutral-600 mt-4 max-w-2xl">
-          Build the day&apos;s breaks by hand &mdash; when each break airs, how long it
-          is, and which days it runs. Later, campaign spots are placed into these.
-        </p>
-      </div>
+    <div>
+      <PageHeader
+        title="Commercial breaks"
+        description="Build the day's breaks by hand — when each break airs, how long it is, and which days it runs. Later, campaign spots are placed into these."
+        action={<NewBreakButton stations={(stations ?? []).map((s) => ({ id: s.id, code: s.code, name: s.name }))} action={createBreak} />}
+      />
 
-      <section className="rounded-lg border border-brand-mist bg-white p-5">
-        <h2 className="font-semibold text-brand mb-3">Add a break</h2>
-        <BreakForm stations={(stations ?? []).map((s) => ({ id: s.id, code: s.code, name: s.name }))} action={createBreak} />
-      </section>
-
-      <section>
-        <h2 className="font-semibold text-brand mb-3">Breaks {breaks?.length ? `(${breaks.length})` : ""}</h2>
+      <div className="mt-6">
         {!breaks || breaks.length === 0 ? (
-          <p className="text-sm text-neutral-500">No breaks yet.</p>
+          <EmptyState title="No breaks yet" hint="Add the first one." />
         ) : (
-          <div className="space-y-2">
+          <Card className="divide-y divide-neutral-100">
             {breaks.map((b) => (
-              <div key={b.id} className="rounded border border-neutral-200 bg-white p-3 flex items-center justify-between gap-3 flex-wrap">
+              <div key={b.id} className="flex items-center justify-between gap-3 flex-wrap px-4 py-3">
                 <div className="flex items-center gap-3 flex-wrap">
-                  <span className="font-mono text-brand">{String(b.start_time).slice(0, 5)}</span>
-                  <span className="font-medium">{b.name}</span>
-                  <span className="serial text-xs font-mono text-neutral-500">
-                    {(b.stations as never as { code: string })?.code}
-                  </span>
+                  <span className="font-mono font-semibold text-brand">{String(b.start_time).slice(0, 5)}</span>
+                  <span className="font-medium text-ink">{b.name}</span>
+                  <span className="text-xs font-mono text-neutral-500">{(b.stations as never as { code: string })?.code}</span>
                   <span className="text-sm text-neutral-500">{Math.round(b.duration_secs / 60)} min</span>
                   <span className="text-xs text-neutral-400">{daysLabel(b as never)}</span>
                 </div>
@@ -61,9 +50,9 @@ export default async function BreaksPage() {
                 </ActionForm>
               </div>
             ))}
-          </div>
+          </Card>
         )}
-      </section>
+      </div>
     </div>
   );
 }

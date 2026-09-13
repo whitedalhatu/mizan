@@ -12,9 +12,10 @@ const DAYS: [string, string][] = [
 
 // Build a commercial break by hand: which station, when in the day, how long,
 // and which weekdays it runs. Campaign spots are placed into these later.
-export function BreakForm({ stations, action }: {
+export function BreakForm({ stations, action, onDone }: {
   stations: Station[];
   action: (fd: FormData) => Promise<Result>;
+  onDone?: () => void;
 }) {
   const [result, setResult] = useState<Result | null>(null);
   const [pending, startTransition] = useTransition();
@@ -33,7 +34,7 @@ export function BreakForm({ stations, action }: {
         startTransition(async () => {
           const r = await action(fd);
           setResult(r);
-          if (r.ok) formEl.reset();
+          if (r.ok) { formEl.reset(); onDone?.(); }
         });
       }}
     >

@@ -9,7 +9,7 @@ type Result = { ok: boolean; message: string };
 // playout type — RadioBOSS asks for its API details; "other" takes a note; "none"
 // asks nothing (connect later). This is the one job MIZAN always owns, whether
 // the station is typed here or imported from ECIRS.
-export function StationForm({ action }: { action: (fd: FormData) => Promise<Result> }) {
+export function StationForm({ action, onDone }: { action: (fd: FormData) => Promise<Result>; onDone?: () => void }) {
   const [playoutType, setPlayoutType] = useState("none");
   const [result, setResult] = useState<Result | null>(null);
   const [pending, startTransition] = useTransition();
@@ -24,7 +24,7 @@ export function StationForm({ action }: { action: (fd: FormData) => Promise<Resu
         startTransition(async () => {
           const r = await action(fd);
           setResult(r);
-          if (r.ok) { formEl.reset(); setPlayoutType("none"); }
+          if (r.ok) { formEl.reset(); setPlayoutType("none"); onDone?.(); }
         });
       }}
     >
