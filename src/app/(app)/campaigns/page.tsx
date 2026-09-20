@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ActionForm, PageHeader, Card, Badge, EmptyState } from "../ui";
 import { NewCampaignButton } from "./NewCampaignButton";
@@ -73,8 +74,8 @@ export default async function CampaignsPage() {
                 <tbody className="divide-y divide-neutral-100">
                   {campaigns.map((c) => (
                     <tr key={c.id} className="hover:bg-neutral-50 transition-colors">
-                      <td className="px-4 py-3 font-mono text-brand">{c.number}</td>
-                      <td className="px-4 py-3 font-medium text-ink">{c.name}</td>
+                      <td className="px-4 py-3 font-mono text-brand"><Link href={`/campaigns/${c.id}`} className="hover:underline">{c.number}</Link></td>
+                      <td className="px-4 py-3 font-medium text-ink"><Link href={`/campaigns/${c.id}`} className="hover:underline">{c.name}</Link></td>
                       <td className="px-4 py-3 text-neutral-600">{custName.get(String(c.customer_id)) ?? "—"}</td>
                       <td className="px-4 py-3 font-mono text-xs">{stnCode.get(String(c.station_id)) ?? "—"}</td>
                       <td className="px-4 py-3 text-neutral-500 whitespace-nowrap">{c.start_date} → {c.end_date}</td>
