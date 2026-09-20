@@ -3,6 +3,7 @@
 import { getIdentity } from "@/lib/identity";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { planCampaign, type Segment, type Break } from "@/lib/scheduler";
 
 type Result = { ok: boolean; message: string };
 
@@ -93,4 +94,127 @@ export async function deleteSegment(formData: FormData): Promise<Result> {
   if (error) return { ok: false, message: error.message };
   revalidatePath(`/campaigns/${campaignId}`);
   return { ok: true, message: "Segment removed." };
+}
+
+// --- Generate the schedule: walk segments, place plays, write scheduled_plays ---
+
+export async function generateSchedule(formData: FormData): Promise<Result> {
+  if (!(await getIdentity())) return { ok: false, message: "Please sign in." };
+  const campaignId = String(formData.get("campaign_id") ?? "");
+  if (!campaignId) return { ok: false, message: "Missing campaign." };
+
+  const supabase = createClient();
+
+  const { data: campaign } = await supabase
+    .from("campaigns").select("id, station_id, customer_id, competition_mode").eq("id", campaignId).maybeSingle();
+  if (!campaign) return { ok: false, message: "Campaign not found." };
+
+  // Segments + their materials/pinned breaks.
+  const { data: segs } = await supabase
+    .from("segments")
+    .select("id, start_date, end_date, runs_mon, runs_tue, runs_wed, runs_thu, runs_fri, runs_sat, runs_sun, hour_from, hour_to, plays_count, plays_basis")
+    .eq("campaign_id", campaignId);
+  if (!segs || segs.length === 0) return { ok: false, message: "Add at least one segment first." };
+
+  const segIds = segs.map((s) => s.id);
+  const { data: segMats } = await supabase.from("segment_materials").select("segment_id, material_id, position").in("segment_id", segIds);
+  const { data: segBrks } = await supabase.from("segment_breaks").select("segment_id, break_id").in("segment_id", segIds);
+
+  // Breaks on the station.
+  const { data: brks } = await supabase
+    .from("commercial_breaks")
+    .select("id, start_time, duration_secs, runs_mon, runs_tue, runs_wed, runs_thu, runs_fri, runs_sat, runs_sun, active")
+    .eq("station_id", campaign.station_id).eq("active", true);
+
+  // Material durations.
+  const { data: mats } = await supabase.from("materials").select("id, duration_secs");
+  const materialDur: Record<string, number> = {};
+  (mats ?? []).forEach((m) => { materialDur[m.id] = m.duration_secs; });
+
+  // Shape for the engine.
+  const materialsBySeg = new Map<string, { id: string; pos: number }[]>();
+  (segMats ?? []).forEach((r) => {
+    const arr = materialsBySeg.get(r.segment_id) ?? [];
+    arr.push({ id: r.material_id, pos: r.position });
+    materialsBySeg.set(r.segment_id, arr);
+  });
+  const breaksBySeg = new Map<string, string[]>();
+  (segBrks ?? []).forEach((r) => {
+    const arr = breaksBySeg.get(r.segment_id) ?? [];
+    arr.push(r.break_id); breaksBySeg.set(r.segment_id, arr);
+  });
+
+  const segments: Segment[] = segs.map((s) => ({
+    id: s.id, start_date: s.start_date, end_date: s.end_date,
+    runs: {
+      runs_mon: s.runs_mon, runs_tue: s.runs_tue, runs_wed: s.runs_wed, runs_thu: s.runs_thu,
+      runs_fri: s.runs_fri, runs_sat: s.runs_sat, runs_sun: s.runs_sun,
+    },
+    hour_from: s.hour_from, hour_to: s.hour_to, plays_count: s.plays_count, plays_basis: s.plays_basis,
+    material_ids: (materialsBySeg.get(s.id) ?? []).sort((a, b) => a.pos - b.pos).map((m) => m.id),
+    break_ids: breaksBySeg.get(s.id) ?? null,
+  }));
+
+  const breaks: Break[] = (brks ?? []).map((b) => ({
+    id: b.id, start_time: b.start_time, duration_secs: b.duration_secs,
+    runs: {
+      runs_mon: b.runs_mon, runs_tue: b.runs_tue, runs_wed: b.runs_wed, runs_thu: b.runs_thu,
+      runs_fri: b.runs_fri, runs_sat: b.runs_sat, runs_sun: b.runs_sun,
+    },
+  }));
+
+  // Competition: which customers this campaign must avoid, and where they already sit.
+  const competitorCustomerIds = new Set<string>();
+  const competitorOccupancy = new Map<string, Set<string>>();
+
+  if (campaign.competition_mode === "auto") {
+    // Same-category customers are competitors.
+    const { data: me } = await supabase.from("customers").select("category_id").eq("id", campaign.customer_id).maybeSingle();
+    if (me?.category_id) {
+      const { data: sameCat } = await supabase.from("customers").select("id").eq("category_id", me.category_id).neq("id", campaign.customer_id);
+      (sameCat ?? []).forEach((c) => competitorCustomerIds.add(c.id));
+    }
+  } else if (campaign.competition_mode === "manual") {
+    const { data: comps } = await supabase.from("campaign_competitors").select("competitor_customer_id").eq("campaign_id", campaignId);
+    (comps ?? []).forEach((r) => competitorCustomerIds.add(r.competitor_customer_id));
+  }
+
+  // Where competitors already have plays (other active campaigns on this station).
+  if (competitorCustomerIds.size > 0) {
+    const { data: others } = await supabase
+      .from("scheduled_plays")
+      .select("break_id, play_date, campaigns!inner ( customer_id, station_id )")
+      .not("break_id", "is", null);
+    (others ?? []).forEach((r) => {
+      const camp = r.campaigns as never as { customer_id: string; station_id: string };
+      if (!camp || camp.station_id !== campaign.station_id) return;
+      if (!competitorCustomerIds.has(camp.customer_id)) return;
+      const key = `${r.break_id}|${r.play_date}`;
+      const set = competitorOccupancy.get(key) ?? new Set<string>();
+      set.add(camp.customer_id); competitorOccupancy.set(key, set);
+    });
+  }
+
+  // Run the engine.
+  const placed = planCampaign({ segments, breaks, materialDur, competitorCustomerIds, competitorOccupancy });
+
+  // Rebuild: clear this campaign's existing scheduled plays (draft rebuild), then insert.
+  await supabase.from("scheduled_plays").delete().eq("campaign_id", campaignId);
+  if (placed.length > 0) {
+    const rows = placed.map((p) => ({
+      campaign_id: campaignId, segment_id: p.segment_id, material_id: p.material_id,
+      play_date: p.play_date, intended_from: p.intended_from, intended_to: p.intended_to,
+      break_id: p.break_id, actual_time: p.actual_time, shifted: p.shifted, shift_reason: p.shift_reason,
+      air_state: "scheduled",
+    }));
+    // insert in chunks to be safe
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await supabase.from("scheduled_plays").insert(rows.slice(i, i + 500));
+      if (error) return { ok: false, message: "Schedule write failed: " + error.message };
+    }
+  }
+
+  const shiftedCount = placed.filter((p) => p.shifted).length;
+  revalidatePath(`/campaigns/${campaignId}`);
+  return { ok: true, message: `Schedule generated — ${placed.length} plays${shiftedCount ? `, ${shiftedCount} shifted` : ""}.` };
 }

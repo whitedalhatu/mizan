@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ActionForm, PageHeader, Card, Badge, EmptyState, btn, btnQuiet } from "../../ui";
 import { AddSegmentButton } from "./AddSegmentButton";
-import { setCampaignStatus, createSegment, deleteSegment } from "./actions";
+import { setCampaignStatus, createSegment, deleteSegment, generateSchedule } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +37,26 @@ export default async function CampaignDetailPage({ params }: { params: { id: str
     supabase.from("campaign_materials").select("materials ( id, name, duration_secs )").eq("campaign_id", c.id),
     supabase.from("segments").select("*").eq("campaign_id", c.id).order("start_date"),
   ]);
+
+  const { data: plays } = await supabase
+    .from("scheduled_plays")
+    .select("id, play_date, actual_time, intended_from, intended_to, break_id, material_id, shifted, shift_reason, air_state")
+    .eq("campaign_id", c.id)
+    .order("play_date").order("actual_time");
+
+  // Lookups for names shown in the schedule.
+  const { data: allMats } = await supabase.from("materials").select("id, name");
+  const { data: allBrks } = await supabase.from("commercial_breaks").select("id, name");
+  const matName = new Map<string, string>((allMats ?? []).map((m) => [m.id, m.name]));
+  const brkName = new Map<string, string>((allBrks ?? []).map((b) => [b.id, b.name]));
+
+  // Group plays by date.
+  const byDate = new Map<string, typeof plays>();
+  (plays ?? []).forEach((p) => {
+    const arr = byDate.get(p.play_date) ?? [];
+    arr!.push(p); byDate.set(p.play_date, arr);
+  });
+  const shiftedCount = (plays ?? []).filter((p) => p.shifted).length;
 
   const materials = (campMaterials ?? [])
     .map((r) => r.materials as never as { id: string; name: string; duration_secs: number })
@@ -126,14 +146,54 @@ export default async function CampaignDetailPage({ params }: { params: { id: str
         </div>
       </div>
 
-      {/* Schedule — comes in the next delivery */}
+      {/* Schedule */}
       <div className="mt-8">
-        <h2 className="text-base font-semibold text-ink">Schedule</h2>
-        <div className="mt-3 rounded-xl border border-dashed border-neutral-200 bg-neutral-50/50 px-6 py-8 text-center">
-          <p className="text-sm text-neutral-500">
-            Generating the schedule — placing each play into a break — comes next.
-            Add your segments first; then MIZAN can lay out the plays.
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-base font-semibold text-ink">
+            Schedule <span className="text-neutral-400 font-normal">({(plays ?? []).length} play{(plays ?? []).length === 1 ? "" : "s"})</span>
+          </h2>
+          {(segments ?? []).length > 0 && (
+            <ActionForm action={generateSchedule} className="inline">
+              <input type="hidden" name="campaign_id" value={c.id} />
+              <button className={btnQuiet}>{(plays ?? []).length ? "Regenerate schedule" : "Generate schedule"}</button>
+            </ActionForm>
+          )}
+        </div>
+
+        {shiftedCount > 0 && (
+          <p className="mt-2 text-xs text-amber-700 bg-amber-50 rounded-md px-2 py-1 inline-block">
+            {shiftedCount} play{shiftedCount === 1 ? " was" : "s were"} shifted outside the requested hours — still counted as played, shown below.
           </p>
+        )}
+
+        <div className="mt-4">
+          {(plays ?? []).length === 0 ? (
+            <EmptyState title="No schedule yet"
+              hint={(segments ?? []).length ? "Generate the schedule to place plays into breaks." : "Add a segment first."} />
+          ) : (
+            <div className="space-y-4">
+              {Array.from(byDate.entries()).map(([date, dayPlays]) => (
+                <Card key={date} className="overflow-hidden">
+                  <div className="px-4 py-2 border-b border-neutral-200 bg-neutral-50 text-sm font-medium text-ink">{date}</div>
+                  <div className="divide-y divide-neutral-100">
+                    {(dayPlays ?? []).map((p) => (
+                      <div key={p.id} className="flex items-center gap-3 px-4 py-2.5 text-sm flex-wrap">
+                        <span className="font-mono text-brand w-14">{p.actual_time ? String(p.actual_time).slice(0,5) : "—"}</span>
+                        <span className="text-ink">{matName.get(p.material_id) ?? "—"}</span>
+                        <span className="text-neutral-400 text-xs">{p.break_id ? brkName.get(p.break_id) ?? "" : "unplaced"}</span>
+                        {p.shifted && (
+                          <Badge tone="warning">shifted</Badge>
+                        )}
+                        {p.shifted && p.shift_reason && (
+                          <span className="text-xs text-neutral-400">{p.shift_reason}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
