@@ -114,14 +114,29 @@ export function planCampaign(input: {
     const pinned = seg.break_ids && seg.break_ids.length ? new Set(seg.break_ids) : null;
     const segBreaks = breaks.filter((b) => !pinned || pinned.has(b.id));
 
-    // Plays per day.
-    const perDay = seg.plays_basis === "per_day"
-      ? seg.plays_count
-      : Math.max(1, Math.round(seg.plays_count / dates.length));
+    // How many plays each date gets.
+    // per_day: the same count every active day.
+    // per_segment: the total spread as evenly as possible across the active days
+    //   (some days get one more than others so the totals sum exactly).
+    const playsByDate = new Map<string, number>();
+    if (seg.plays_basis === "per_day") {
+      for (const d of dates) playsByDate.set(d, seg.plays_count);
+    } else {
+      const n = dates.length;
+      const base = Math.floor(seg.plays_count / n);
+      let remainder = seg.plays_count % n; // this many days get one extra
+      for (const d of dates) {
+        const extra = remainder > 0 ? 1 : 0;
+        if (remainder > 0) remainder--;
+        playsByDate.set(d, base + extra);
+      }
+    }
 
     let rot = 0; // material rotation index
 
     for (const date of dates) {
+      const perDay = playsByDate.get(date) ?? 0;
+      if (perDay === 0) continue;
       // Breaks that run this weekday, in window, sorted by time.
       const runningToday = segBreaks.filter((b) => breakRunsOn(b, date)).sort((a, z) => a.start_time.localeCompare(z.start_time));
       const inWin = runningToday.filter((b) => inWindow(b.start_time, seg.hour_from, seg.hour_to));

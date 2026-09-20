@@ -270,3 +270,59 @@ export async function updateCampaign(formData: FormData): Promise<Result> {
       : "Campaign updated.",
   };
 }
+
+// --- Edit a segment (while the campaign is draft) ---
+export async function updateSegment(formData: FormData): Promise<Result> {
+  if (!(await getIdentity())) return { ok: false, message: "Please sign in." };
+
+  const id = String(formData.get("segment_id") ?? "");
+  const campaignId = String(formData.get("campaign_id") ?? "");
+  const name = String(formData.get("name") ?? "").trim() || "Segment";
+  const startDate = String(formData.get("start_date") ?? "");
+  const endDate = String(formData.get("end_date") ?? "");
+  const hourFrom = String(formData.get("hour_from") ?? "00:00");
+  const hourTo = String(formData.get("hour_to") ?? "23:59");
+  const playsCount = Math.round(Number(formData.get("plays_count") ?? 0));
+  const playsBasis = String(formData.get("plays_basis") ?? "per_day");
+  const materialIds = formData.getAll("material_ids").map(String).filter(Boolean);
+
+  if (!id) return { ok: false, message: "Missing segment." };
+  if (!startDate || !endDate) return { ok: false, message: "Set the segment dates." };
+  if (endDate < startDate) return { ok: false, message: "End date can't be before the start date." };
+  if (!playsCount || playsCount <= 0) return { ok: false, message: "Plays must be more than zero." };
+  if (!["per_day", "per_segment"].includes(playsBasis)) return { ok: false, message: "Invalid plays basis." };
+  if (materialIds.length === 0) return { ok: false, message: "Pick at least one material to rotate." };
+
+  const days = {
+    runs_mon: formData.get("runs_mon") === "on", runs_tue: formData.get("runs_tue") === "on",
+    runs_wed: formData.get("runs_wed") === "on", runs_thu: formData.get("runs_thu") === "on",
+    runs_fri: formData.get("runs_fri") === "on", runs_sat: formData.get("runs_sat") === "on",
+    runs_sun: formData.get("runs_sun") === "on",
+  };
+  if (!Object.values(days).some(Boolean)) return { ok: false, message: "Select at least one weekday." };
+
+  const supabase = createClient();
+
+  // Segment dates must sit within the campaign's dates.
+  if (campaignId) {
+    const { data: camp } = await supabase.from("campaigns").select("start_date, end_date").eq("id", campaignId).maybeSingle();
+    if (camp && (startDate < camp.start_date || endDate > camp.end_date)) {
+      return { ok: false, message: `Segment dates must fall within the campaign (${camp.start_date} to ${camp.end_date}).` };
+    }
+  }
+
+  const { error } = await supabase.from("segments").update({
+    name, start_date: startDate, end_date: endDate,
+    hour_from: hourFrom, hour_to: hourTo, plays_count: playsCount, plays_basis: playsBasis, ...days,
+  }).eq("id", id);
+  if (error) return { ok: false, message: error.message };
+
+  // Replace the segment's materials.
+  await supabase.from("segment_materials").delete().eq("segment_id", id);
+  const rows = materialIds.map((mid, i) => ({ segment_id: id, material_id: mid, position: i }));
+  const { error: mErr } = await supabase.from("segment_materials").insert(rows);
+  if (mErr) return { ok: false, message: "Could not update materials: " + mErr.message };
+
+  if (campaignId) revalidatePath(`/campaigns/${campaignId}`);
+  return { ok: true, message: `Segment "${name}" updated.` };
+}

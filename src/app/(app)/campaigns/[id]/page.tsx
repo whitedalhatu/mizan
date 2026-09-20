@@ -3,8 +3,9 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ActionForm, PageHeader, Card, Badge, EmptyState, btn, btnQuiet } from "../../ui";
 import { AddSegmentButton } from "./AddSegmentButton";
-import { setCampaignStatus, createSegment, deleteSegment, generateSchedule, updateCampaign } from "./actions";
+import { setCampaignStatus, createSegment, deleteSegment, generateSchedule, updateCampaign, updateSegment } from "./actions";
 import { EditCampaignButton } from "./EditCampaignButton";
+import { EditSegmentButton } from "./EditSegmentButton";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +71,17 @@ export default async function CampaignDetailPage({ params }: { params: { id: str
   const materials = (campMaterials ?? [])
     .map((r) => r.materials as never as { id: string; name: string; duration_secs: number })
     .filter(Boolean);
+
+  // Each segment's chosen material ids (for the edit form).
+  const segIds = (segments ?? []).map((s) => s.id);
+  const { data: segMatRows } = segIds.length
+    ? await supabase.from("segment_materials").select("segment_id, material_id, position").in("segment_id", segIds)
+    : { data: [] as { segment_id: string; material_id: string; position: number }[] };
+  const segMaterialIds = new Map<string, string[]>();
+  (segMatRows ?? []).sort((a, b) => a.position - b.position).forEach((r) => {
+    const arr = segMaterialIds.get(r.segment_id) ?? [];
+    arr.push(r.material_id); segMaterialIds.set(r.segment_id, arr);
+  });
 
   const isDraft = c.status === "draft";
 
@@ -148,11 +160,17 @@ export default async function CampaignDetailPage({ params }: { params: { id: str
                       <Badge tone="accent">{s.plays_count} play{s.plays_count === 1 ? "" : "s"} {s.plays_basis === "per_day" ? "/ day" : "/ segment"}</Badge>
                     </div>
                     {isDraft && (
-                      <ActionForm action={deleteSegment} className="inline">
-                        <input type="hidden" name="segment_id" value={s.id} />
-                        <input type="hidden" name="campaign_id" value={c.id} />
-                        <button className="text-xs text-red-700 hover:underline">Remove</button>
-                      </ActionForm>
+                      <div className="flex items-center gap-3">
+                        <EditSegmentButton
+                          seg={{ ...s, material_ids: segMaterialIds.get(s.id) ?? [] } as never}
+                          campaignId={c.id} campaignStart={c.start_date} campaignEnd={c.end_date}
+                          materials={materials as never} action={updateSegment} />
+                        <ActionForm action={deleteSegment} className="inline">
+                          <input type="hidden" name="segment_id" value={s.id} />
+                          <input type="hidden" name="campaign_id" value={c.id} />
+                          <button className="text-xs text-red-700 hover:underline">Remove</button>
+                        </ActionForm>
+                      </div>
                     )}
                   </div>
                 </Card>
