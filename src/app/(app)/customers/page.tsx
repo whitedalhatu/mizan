@@ -3,6 +3,9 @@ import { ActionForm, PageHeader, Card, Badge, EmptyState } from "../ui";
 import { NewCustomerButton } from "./NewCustomerButton";
 import { createCustomer, deleteCustomer } from "./actions";
 
+
+export const dynamic = "force-dynamic";
+
 export default async function CustomersPage() {
   const supabase = createClient();
   const { data: customers } = await supabase

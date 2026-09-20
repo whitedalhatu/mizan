@@ -7,6 +7,9 @@ const STATUS: Record<string, "neutral" | "brand" | "success" | "danger"> = {
   draft: "neutral", active: "brand", completed: "success", cancelled: "danger",
 };
 
+
+export const dynamic = "force-dynamic";
+
 export default async function CampaignsPage() {
   const supabase = createClient();
   const { data: campaigns } = await supabase

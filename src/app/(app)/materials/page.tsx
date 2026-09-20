@@ -5,6 +5,9 @@ import { createMaterial, deleteMaterial } from "./actions";
 
 function fmt(s: number) { const m = Math.floor(s / 60), sec = Math.round(s % 60); return `${m}:${sec.toString().padStart(2, "0")}`; }
 
+
+export const dynamic = "force-dynamic";
+
 export default async function MaterialsPage() {
   const supabase = createClient();
   const { data: materials } = await supabase
