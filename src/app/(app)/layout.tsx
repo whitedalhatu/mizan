@@ -5,6 +5,9 @@ import { Shell } from "./Shell";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
+  { href: "/campaigns", label: "Campaigns", icon: "campaigns" },
+  { href: "/customers", label: "Customers", icon: "customers" },
+  { href: "/materials", label: "Materials", icon: "materials" },
   { href: "/stations", label: "Stations", icon: "stations" },
   { href: "/breaks", label: "Breaks", icon: "breaks" },
   { href: "/categories", label: "Categories", icon: "categories" },
