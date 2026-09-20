@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ActionForm, PageHeader, Card, Badge, EmptyState, btn, btnQuiet } from "../../ui";
 import { AddSegmentButton } from "./AddSegmentButton";
-import { setCampaignStatus, createSegment, deleteSegment, generateSchedule } from "./actions";
+import { setCampaignStatus, createSegment, deleteSegment, generateSchedule, updateCampaign } from "./actions";
+import { EditCampaignButton } from "./EditCampaignButton";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +38,14 @@ export default async function CampaignDetailPage({ params }: { params: { id: str
     supabase.from("campaign_materials").select("materials ( id, name, duration_secs )").eq("campaign_id", c.id),
     supabase.from("segments").select("*").eq("campaign_id", c.id).order("start_date"),
   ]);
+
+  const [{ data: allCustomers }, { data: allStations }] = await Promise.all([
+    supabase.from("customers").select("id, name, customer_categories ( name )").eq("active", true).order("name"),
+    supabase.from("stations").select("id, code, name").eq("active", true).order("code"),
+  ]);
+  const customerOpts = (allCustomers ?? []).map((cu) => ({
+    id: cu.id, name: cu.name, category: (cu.customer_categories as never as { name: string })?.name ?? null,
+  }));
 
   const { data: plays } = await supabase
     .from("scheduled_plays")
@@ -81,6 +90,13 @@ export default async function CampaignDetailPage({ params }: { params: { id: str
             <Badge tone={STATUS[c.status] ?? "neutral"}>{c.status}</Badge>
           </div>
           <div className="flex items-center gap-3">
+            {isDraft && (
+              <EditCampaignButton
+                campaign={c as never}
+                customers={customerOpts as never}
+                stations={(allStations ?? []) as never}
+                action={updateCampaign} />
+            )}
             {isDraft ? (
               <ActionForm action={setCampaignStatus} className="inline">
                 <input type="hidden" name="campaign_id" value={c.id} />

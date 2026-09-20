@@ -218,3 +218,55 @@ export async function generateSchedule(formData: FormData): Promise<Result> {
   revalidatePath(`/campaigns/${campaignId}`);
   return { ok: true, message: `Schedule generated — ${placed.length} plays${shiftedCount ? `, ${shiftedCount} shifted` : ""}.` };
 }
+
+// --- Edit a draft campaign's core details ---
+export async function updateCampaign(formData: FormData): Promise<Result> {
+  if (!(await getIdentity())) return { ok: false, message: "Please sign in." };
+
+  const id = String(formData.get("id") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  const customerId = String(formData.get("customer_id") ?? "");
+  const stationId = String(formData.get("station_id") ?? "");
+  const startDate = String(formData.get("start_date") ?? "");
+  const endDate = String(formData.get("end_date") ?? "");
+  const competitionMode = String(formData.get("competition_mode") ?? "auto");
+
+  if (!id) return { ok: false, message: "Missing campaign." };
+  if (!name) return { ok: false, message: "Campaign name is required." };
+  if (!customerId) return { ok: false, message: "Choose a customer." };
+  if (!stationId) return { ok: false, message: "Choose a station." };
+  if (!startDate || !endDate) return { ok: false, message: "Set the run dates." };
+  if (endDate < startDate) return { ok: false, message: "End date can't be before the start date." };
+  if (!["auto", "manual", "none"].includes(competitionMode)) return { ok: false, message: "Invalid competition mode." };
+
+  const supabase = createClient();
+
+  // Only drafts are editable.
+  const { data: current } = await supabase.from("campaigns").select("status, station_id").eq("id", id).maybeSingle();
+  if (!current) return { ok: false, message: "Campaign not found." };
+  if (current.status !== "draft") return { ok: false, message: "Only draft campaigns can be edited." };
+
+  // If the station changed, the schedule was placed on the old station's breaks —
+  // clear it (segments stay; regenerate after). Also flag segments that now fall
+  // outside the new dates isn't auto-fixed here; the detail page shows them.
+  const stationChanged = current.station_id !== stationId;
+
+  const { error } = await supabase.from("campaigns").update({
+    name, customer_id: customerId, station_id: stationId,
+    start_date: startDate, end_date: endDate, competition_mode: competitionMode,
+  }).eq("id", id);
+  if (error) return { ok: false, message: error.message };
+
+  if (stationChanged) {
+    await supabase.from("scheduled_plays").delete().eq("campaign_id", id);
+  }
+
+  revalidatePath(`/campaigns/${id}`);
+  revalidatePath("/campaigns");
+  return {
+    ok: true,
+    message: stationChanged
+      ? "Campaign updated. The station changed, so the schedule was cleared — regenerate it."
+      : "Campaign updated.",
+  };
+}
