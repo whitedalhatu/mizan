@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ActionForm, PageHeader, Card, Badge, EmptyState, btn, btnQuiet } from "../../ui";
 import { AddSegmentButton } from "./AddSegmentButton";
-import { setCampaignStatus, createSegment, deleteSegment, generateSchedule, updateCampaign, updateSegment } from "./actions";
+import { setCampaignStatus, createSegment, deleteSegment, generateSchedule, updateCampaign, updateSegment, setPlayAirState } from "./actions";
 import { EditCampaignButton } from "./EditCampaignButton";
 import { EditSegmentButton } from "./EditSegmentButton";
 
@@ -50,7 +50,7 @@ export default async function CampaignDetailPage({ params }: { params: { id: str
 
   const { data: plays } = await supabase
     .from("scheduled_plays")
-    .select("id, play_date, actual_time, intended_from, intended_to, break_id, material_id, shifted, shift_reason, air_state")
+    .select("id, play_date, actual_time, intended_from, intended_to, break_id, material_id, shifted, shift_reason, air_state, aired_at")
     .eq("campaign_id", c.id)
     .order("play_date").order("actual_time");
 
@@ -67,6 +67,9 @@ export default async function CampaignDetailPage({ params }: { params: { id: str
     arr!.push(p); byDate.set(p.play_date, arr);
   });
   const shiftedCount = (plays ?? []).filter((p) => p.shifted).length;
+  const airedCount = (plays ?? []).filter((p) => p.air_state === "aired").length;
+  const missedCount = (plays ?? []).filter((p) => p.air_state === "missed").length;
+  const upcomingCount = (plays ?? []).filter((p) => p.air_state === "scheduled").length;
 
   const materials = (campMaterials ?? [])
     .map((r) => r.materials as never as { id: string; name: string; duration_secs: number })
@@ -194,9 +197,17 @@ export default async function CampaignDetailPage({ params }: { params: { id: str
           )}
         </div>
 
+        {(plays ?? []).length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            <span className="rounded-md bg-emerald-50 text-emerald-700 px-2 py-1">{airedCount} aired</span>
+            <span className="rounded-md bg-neutral-100 text-neutral-600 px-2 py-1">{upcomingCount} upcoming</span>
+            {missedCount > 0 && <span className="rounded-md bg-red-50 text-red-700 px-2 py-1">{missedCount} missed</span>}
+            {shiftedCount > 0 && <span className="rounded-md bg-amber-50 text-amber-700 px-2 py-1">{shiftedCount} shifted</span>}
+          </div>
+        )}
         {shiftedCount > 0 && (
-          <p className="mt-2 text-xs text-amber-700 bg-amber-50 rounded-md px-2 py-1 inline-block">
-            {shiftedCount} play{shiftedCount === 1 ? " was" : "s were"} shifted outside the requested hours — still counted as played, shown below.
+          <p className="mt-2 text-xs text-neutral-500">
+            Shifted plays aired outside the requested hours (actual time shown in brackets) — still counted as played.
           </p>
         )}
 
@@ -210,19 +221,47 @@ export default async function CampaignDetailPage({ params }: { params: { id: str
                 <Card key={date} className="overflow-hidden">
                   <div className="px-4 py-2 border-b border-neutral-200 bg-neutral-50 text-sm font-medium text-ink">{date}</div>
                   <div className="divide-y divide-neutral-100">
-                    {(dayPlays ?? []).map((p) => (
-                      <div key={p.id} className="flex items-center gap-3 px-4 py-2.5 text-sm flex-wrap">
-                        <span className="font-mono text-brand w-14">{p.actual_time ? String(p.actual_time).slice(0,5) : "—"}</span>
-                        <span className="text-ink">{matName.get(p.material_id) ?? "—"}</span>
-                        <span className="text-neutral-400 text-xs">{p.break_id ? brkName.get(p.break_id) ?? "" : "unplaced"}</span>
-                        {p.shifted && (
-                          <Badge tone="warning">shifted</Badge>
-                        )}
-                        {p.shifted && p.shift_reason && (
-                          <span className="text-xs text-neutral-400">{p.shift_reason}</span>
-                        )}
-                      </div>
-                    ))}
+                    {(dayPlays ?? []).map((p) => {
+                      const missed = p.air_state === "missed";
+                      const aired = p.air_state === "aired";
+                      return (
+                        <div key={p.id}
+                          className={`flex items-center gap-3 px-4 py-2.5 text-sm flex-wrap ${
+                            missed ? "bg-red-50" : p.shifted ? "bg-amber-50/60" : ""}`}>
+                          <span className={`font-mono w-20 ${missed ? "text-red-700 line-through" : p.shifted ? "text-amber-700" : "text-brand"}`}>
+                            {p.actual_time ? String(p.actual_time).slice(0,5) : "—"}
+                            {p.shifted && p.actual_time && (
+                              <span className="text-neutral-400 ml-1">({String(p.actual_time).slice(0,5)})</span>
+                            )}
+                          </span>
+                          <span className={missed ? "text-red-700 line-through" : "text-ink"}>{matName.get(p.material_id) ?? "—"}</span>
+                          <span className="text-neutral-400 text-xs">{p.break_id ? brkName.get(p.break_id) ?? "" : "unplaced"}</span>
+                          {p.shifted && <Badge tone="warning">shifted</Badge>}
+                          {missed && <Badge tone="danger">missed</Badge>}
+                          {aired && <Badge tone="success">aired</Badge>}
+                          {p.shifted && p.shift_reason && (
+                            <span className="text-xs text-neutral-400 hidden sm:inline">{p.shift_reason}</span>
+                          )}
+                          <div className="ml-auto flex items-center gap-2">
+                            {p.air_state !== "missed" ? (
+                              <ActionForm action={setPlayAirState} className="inline">
+                                <input type="hidden" name="play_id" value={p.id} />
+                                <input type="hidden" name="campaign_id" value={c.id} />
+                                <input type="hidden" name="air_state" value="missed" />
+                                <button className="text-xs text-red-700 hover:underline">Mark missed</button>
+                              </ActionForm>
+                            ) : (
+                              <ActionForm action={setPlayAirState} className="inline">
+                                <input type="hidden" name="play_id" value={p.id} />
+                                <input type="hidden" name="campaign_id" value={c.id} />
+                                <input type="hidden" name="air_state" value="scheduled" />
+                                <button className="text-xs text-brand hover:underline">Restore</button>
+                              </ActionForm>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </Card>
               ))}

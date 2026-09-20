@@ -326,3 +326,27 @@ export async function updateSegment(formData: FormData): Promise<Result> {
   if (campaignId) revalidatePath(`/campaigns/${campaignId}`);
   return { ok: true, message: `Segment "${name}" updated.` };
 }
+
+// --- Airing state corrections (manual, until playout integration fills it) ---
+// Marking a play's airing state is a correction tool: the automatic record comes
+// from the playout system at Stage 6. Here a human can flag a play that didn't
+// run (missed) or restore one.
+export async function setPlayAirState(formData: FormData): Promise<Result> {
+  if (!(await getIdentity())) return { ok: false, message: "Please sign in." };
+  const playId = String(formData.get("play_id") ?? "");
+  const campaignId = String(formData.get("campaign_id") ?? "");
+  const state = String(formData.get("air_state") ?? "");
+  if (!playId) return { ok: false, message: "Missing play." };
+  if (!["scheduled", "aired", "missed"].includes(state)) return { ok: false, message: "Invalid state." };
+
+  const supabase = createClient();
+  const update: Record<string, unknown> = { air_state: state };
+  // aired_at is only meaningful when aired; clear it otherwise.
+  update.aired_at = state === "aired" ? new Date().toISOString() : null;
+
+  const { error } = await supabase.from("scheduled_plays").update(update).eq("id", playId);
+  if (error) return { ok: false, message: error.message };
+  if (campaignId) revalidatePath(`/campaigns/${campaignId}`);
+  revalidatePath("/air-log");
+  return { ok: true, message: state === "missed" ? "Marked as missed." : state === "aired" ? "Marked as aired." : "Reset." };
+}
