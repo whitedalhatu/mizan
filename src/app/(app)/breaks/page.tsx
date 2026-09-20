@@ -1,7 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { ActionForm, PageHeader, Card, EmptyState } from "../ui";
 import { NewBreakButton } from "./NewBreakButton";
-import { createBreak, deleteBreak } from "./actions";
+import { createBreak, deleteBreak, updateBreak } from "./actions";
+import { EditBreakButton } from "./EditBreakButton";
 
 const DAY_KEYS: [string, string][] = [
   ["runs_mon", "Mon"], ["runs_tue", "Tue"], ["runs_wed", "Wed"], ["runs_thu", "Thu"],
@@ -13,6 +14,8 @@ function daysLabel(b: Record<string, unknown>): string {
   if (on.length === 5 && !b.runs_sat && !b.runs_sun) return "Mon\u2013Fri";
   return on.join(", ");
 }
+
+export const dynamic = "force-dynamic";
 
 export default async function BreaksPage() {
   const supabase = createClient();
@@ -44,10 +47,13 @@ export default async function BreaksPage() {
                   <span className="text-sm text-neutral-500">{Math.round(b.duration_secs / 60)} min</span>
                   <span className="text-xs text-neutral-400">{daysLabel(b as never)}</span>
                 </div>
-                <ActionForm action={deleteBreak} className="inline">
-                  <input type="hidden" name="id" value={b.id} />
-                  <button className="text-sm text-red-700 hover:underline">Delete</button>
-                </ActionForm>
+                <div className="flex items-center gap-3">
+                  <EditBreakButton brk={b as never} action={updateBreak} />
+                  <ActionForm action={deleteBreak} className="inline">
+                    <input type="hidden" name="id" value={b.id} />
+                    <button className="text-sm text-red-700 hover:underline">Delete</button>
+                  </ActionForm>
+                </div>
               </div>
             ))}
           </Card>
