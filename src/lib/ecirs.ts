@@ -69,6 +69,18 @@ export async function fetchEcirsClientContracts(ecirsClientId: string): Promise<
   return (body?.contracts ?? null) as EcirsContract[] | null;
 }
 
+// Diagnostic variant: returns the raw outcome so the UI can explain what happened.
+export async function fetchEcirsClientContractsDebug(ecirsClientId: string): Promise<{
+  reached: boolean; status: number | null; contracts: EcirsContract[] | null; raw: string | null;
+}> {
+  const res = await callEcirs(`/api/mizan/clients/${ecirsClientId}/contracts`);
+  if (!res) return { reached: false, status: null, contracts: null, raw: null };
+  const text = await res.text().catch(() => null);
+  let contracts: EcirsContract[] | null = null;
+  try { contracts = text ? (JSON.parse(text).contracts ?? null) : null; } catch { /* ignore */ }
+  return { reached: true, status: res.status, contracts, raw: text };
+}
+
 export async function pushAiringProof(payload: {
   ecirs_contract_id: string;
   aired_plays: number; planned_plays: number;

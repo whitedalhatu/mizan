@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { fetchEcirsClientContracts } from "@/lib/ecirs";
+import { fetchEcirsClientContractsDebug } from "@/lib/ecirs";
 import { PageHeader, Card, Badge, EmptyState } from "../../ui";
 import { ImportContractButton } from "./ImportContractButton";
 import { importContractAsCampaign } from "../actions";
@@ -29,11 +29,17 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
   const { data: stations } = await supabase.from("stations").select("id, code, name").eq("active", true).order("code");
 
   // If linked to ECIRS, pull their contracts.
-  let ecirsContracts: Awaited<ReturnType<typeof fetchEcirsClientContracts>> = null;
+  let ecirsContracts: Awaited<ReturnType<typeof fetchEcirsClientContractsDebug>>["contracts"] = null;
   let ecirsError = false;
+  let debugInfo = "";
   if (cust.ecirs_client_id) {
-    ecirsContracts = await fetchEcirsClientContracts(cust.ecirs_client_id);
-    if (ecirsContracts === null) ecirsError = true;
+    const dbg = await fetchEcirsClientContractsDebug(cust.ecirs_client_id);
+    ecirsContracts = dbg.contracts;
+    if (!dbg.reached) { ecirsError = true; debugInfo = "Couldn't reach ECIRS."; }
+    else {
+      debugInfo = `ECIRS responded ${dbg.status}. Client id queried: ${cust.ecirs_client_id}. Contracts returned: ${dbg.contracts?.length ?? 0}.`;
+      if (dbg.status !== 200) { ecirsError = true; debugInfo += " Raw: " + (dbg.raw ?? "").slice(0, 200); }
+    }
   }
   const importedIds = new Set((campaigns ?? []).map((c) => c.ecirs_contract_id).filter(Boolean));
 
@@ -54,6 +60,7 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
         <div className="mt-8">
           <h2 className="text-base font-semibold text-ink">Contracts in ECIRS</h2>
           <p className="text-sm text-neutral-500 mt-0.5">Bring a contract in to start a MIZAN campaign — dates and the sold spot rate come across; you add the audio and hours here.</p>
+          {debugInfo && <p className="mt-1 text-xs text-neutral-400 font-mono break-all">{debugInfo}</p>}
 
           <div className="mt-4">
             {ecirsError ? (
