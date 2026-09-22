@@ -3,6 +3,7 @@
 import { getIdentity } from "@/lib/identity";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
+import { testEcirsConnection } from "@/lib/ecirs";
 
 type Result = { ok: boolean; message: string };
 
@@ -50,4 +51,21 @@ export async function saveEcirsConnection(formData: FormData): Promise<Result> {
   if (error) return { ok: false, message: error.message };
   revalidatePath("/settings");
   return { ok: true, message: "ECIRS details saved. Live connection is enabled in a later stage." };
+}
+
+// --- Test the ECIRS connection (verifies the key against ECIRS) ---
+
+export async function testEcirs(): Promise<Result> {
+  if (!(await getIdentity())) return { ok: false, message: "Please sign in." };
+  const res = await testEcirsConnection();
+  // On success, mark connected so the rest of the app knows.
+  if (res.ok) {
+    const admin = createAdminClient();
+    await admin.from("platform_settings").update({ ecirs_connected: true }).eq("id", true);
+    revalidatePath("/settings");
+  } else {
+    const admin = createAdminClient();
+    await admin.from("platform_settings").update({ ecirs_connected: false }).eq("id", true);
+  }
+  return res;
 }

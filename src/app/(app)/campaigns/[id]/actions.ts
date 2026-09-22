@@ -3,6 +3,7 @@
 import { getIdentity } from "@/lib/identity";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { pushAiringProof } from "@/lib/ecirs";
 import { planCampaign, type Segment, type Break } from "@/lib/scheduler";
 
 type Result = { ok: boolean; message: string };
@@ -349,4 +350,41 @@ export async function setPlayAirState(formData: FormData): Promise<Result> {
   if (campaignId) revalidatePath(`/campaigns/${campaignId}`);
   revalidatePath("/air-log");
   return { ok: true, message: state === "missed" ? "Marked as missed." : state === "aired" ? "Marked as aired." : "Reset." };
+}
+
+// --- Push airing proof to ECIRS (for a campaign linked to a contract) ---
+
+export async function sendAiringProof(formData: FormData): Promise<Result> {
+  if (!(await getIdentity())) return { ok: false, message: "Please sign in." };
+  const campaignId = String(formData.get("campaign_id") ?? "");
+  if (!campaignId) return { ok: false, message: "Missing campaign." };
+
+  const supabase = createClient();
+  const { data: camp } = await supabase
+    .from("campaigns").select("ecirs_contract_id, spot_rate").eq("id", campaignId).maybeSingle();
+  if (!camp?.ecirs_contract_id) return { ok: false, message: "This campaign isn't linked to an ECIRS contract." };
+
+  // Gather plays + material durations to compute counts and seconds.
+  const { data: plays } = await supabase
+    .from("scheduled_plays").select("air_state, material_id").eq("campaign_id", campaignId);
+  const rows = plays ?? [];
+  const matIds = Array.from(new Set(rows.map((p) => p.material_id)));
+  const { data: mats } = matIds.length
+    ? await supabase.from("materials").select("id, duration_secs").in("id", matIds)
+    : { data: [] as { id: string; duration_secs: number }[] };
+  const dur = new Map<string, number>((mats ?? []).map((m) => [m.id, m.duration_secs]));
+
+  const plannedPlays = rows.length;
+  const airedPlays = rows.filter((p) => p.air_state === "aired").length;
+  const plannedSeconds = rows.reduce((s, p) => s + (dur.get(p.material_id) ?? 0), 0);
+  const airedSeconds = rows.filter((p) => p.air_state === "aired").reduce((s, p) => s + (dur.get(p.material_id) ?? 0), 0);
+  const airedValue = camp.spot_rate != null ? Number(camp.spot_rate) * airedPlays : null;
+
+  const res = await pushAiringProof({
+    ecirs_contract_id: camp.ecirs_contract_id,
+    aired_plays: airedPlays, planned_plays: plannedPlays,
+    aired_seconds: airedSeconds, planned_seconds: plannedSeconds,
+    aired_value: airedValue,
+  });
+  return res;
 }

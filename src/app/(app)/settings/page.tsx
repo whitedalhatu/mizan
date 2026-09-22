@@ -3,7 +3,8 @@ import { getIdentity } from "@/lib/identity";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSettings } from "@/lib/settings";
 import { ActionForm, Field, Input, PageHeader, Card, btn } from "../ui";
-import { updateSettings, saveEcirsConnection } from "./actions";
+import { updateSettings, saveEcirsConnection, testEcirs } from "./actions";
+import { TestEcirsButton } from "./TestEcirsButton";
 
 export default async function SettingsPage() {
   if (!(await getIdentity())) redirect("/login");
@@ -62,6 +63,10 @@ export default async function SettingsPage() {
             </span>
           </div>
         </ActionForm>
+        <div className="mt-3 pt-3 border-t border-neutral-100">
+          <TestEcirsButton action={testEcirs} />
+          <p className="text-xs text-neutral-400 mt-1">Save the address and key first, then test — MIZAN checks ECIRS accepts the key.</p>
+        </div>
       </Card>
     </div>
   );

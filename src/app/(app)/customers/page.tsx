@@ -1,7 +1,9 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { ActionForm, PageHeader, Card, Badge, EmptyState } from "../ui";
 import { NewCustomerButton } from "./NewCustomerButton";
-import { createCustomer, deleteCustomer } from "./actions";
+import { createCustomer, deleteCustomer, syncEcirsClients } from "./actions";
+import { SyncEcirsButton } from "./SyncEcirsButton";
 
 
 export const dynamic = "force-dynamic";
@@ -20,7 +22,7 @@ export default async function CustomersPage() {
       <PageHeader
         title="Customers"
         description="The advertisers you air campaigns for. Each belongs to a category, which is how MIZAN keeps competitors out of the same break."
-        action={<NewCustomerButton categories={(categories ?? []) as never} action={createCustomer} />}
+        action={<div className="flex items-center gap-2"><SyncEcirsButton action={syncEcirsClients} /><NewCustomerButton categories={(categories ?? []) as never} action={createCustomer} /></div>}
       />
       <div className="mt-6">
         {!customers || customers.length === 0 ? (
@@ -30,7 +32,7 @@ export default async function CustomersPage() {
             {customers.map((c) => (
               <div key={c.id} className="flex items-center justify-between gap-3 px-4 py-3 flex-wrap">
                 <div className="flex items-center gap-3 flex-wrap">
-                  <span className="font-medium text-ink">{c.name}</span>
+                  <Link href={`/customers/${c.id}`} className="font-medium text-ink hover:underline">{c.name}</Link>
                   {(c.customer_categories as never as { name: string })?.name && (
                     <Badge tone="accent">{(c.customer_categories as never as { name: string }).name}</Badge>
                   )}

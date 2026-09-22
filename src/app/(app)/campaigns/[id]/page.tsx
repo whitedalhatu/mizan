@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ActionForm, PageHeader, Card, Badge, EmptyState, btn, btnQuiet } from "../../ui";
 import { AddSegmentButton } from "./AddSegmentButton";
-import { setCampaignStatus, createSegment, deleteSegment, generateSchedule, updateCampaign, updateSegment, setPlayAirState } from "./actions";
+import { setCampaignStatus, createSegment, deleteSegment, generateSchedule, updateCampaign, updateSegment, setPlayAirState, sendAiringProof } from "./actions";
 import { EditCampaignButton } from "./EditCampaignButton";
 import { EditSegmentButton } from "./EditSegmentButton";
 
@@ -28,7 +28,7 @@ export default async function CampaignDetailPage({ params }: { params: { id: str
 
   const { data: c } = await supabase
     .from("campaigns")
-    .select("id, number, name, status, start_date, end_date, customer_id, station_id, competition_mode")
+    .select("id, number, name, status, start_date, end_date, customer_id, station_id, competition_mode, ecirs_contract_id, spot_rate")
     .eq("id", params.id).maybeSingle();
   if (!c) notFound();
 
@@ -189,12 +189,20 @@ export default async function CampaignDetailPage({ params }: { params: { id: str
           <h2 className="text-base font-semibold text-ink">
             Schedule <span className="text-neutral-400 font-normal">({(plays ?? []).length} play{(plays ?? []).length === 1 ? "" : "s"})</span>
           </h2>
-          {(segments ?? []).length > 0 && (
-            <ActionForm action={generateSchedule} className="inline">
-              <input type="hidden" name="campaign_id" value={c.id} />
-              <button className={btnQuiet}>{(plays ?? []).length ? "Regenerate schedule" : "Generate schedule"}</button>
-            </ActionForm>
-          )}
+          <div className="flex items-center gap-3">
+            {(c as never as { ecirs_contract_id: string | null }).ecirs_contract_id && (plays ?? []).length > 0 && (
+              <ActionForm action={sendAiringProof} className="inline">
+                <input type="hidden" name="campaign_id" value={c.id} />
+                <button className={btnQuiet}>Send airing proof to ECIRS</button>
+              </ActionForm>
+            )}
+            {(segments ?? []).length > 0 && (
+              <ActionForm action={generateSchedule} className="inline">
+                <input type="hidden" name="campaign_id" value={c.id} />
+                <button className={btnQuiet}>{(plays ?? []).length ? "Regenerate schedule" : "Generate schedule"}</button>
+              </ActionForm>
+            )}
+          </div>
         </div>
 
         {(plays ?? []).length > 0 && (
