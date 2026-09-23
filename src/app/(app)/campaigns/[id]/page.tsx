@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ActionForm, PageHeader, Card, Badge, EmptyState, btn, btnQuiet } from "../../ui";
 import { AddSegmentButton } from "./AddSegmentButton";
-import { setCampaignStatus, createSegment, deleteSegment, generateSchedule, updateCampaign, updateSegment, setPlayAirState, sendAiringProof } from "./actions";
+import { AddMaterialButton } from "./AddMaterialButton";
+import { setCampaignStatus, createSegment, deleteSegment, generateSchedule, updateCampaign, updateSegment, setPlayAirState, sendAiringProof, addCampaignMaterial, removeCampaignMaterial } from "./actions";
 import { EditCampaignButton } from "./EditCampaignButton";
 import { EditSegmentButton } from "./EditSegmentButton";
 
@@ -75,6 +76,11 @@ export default async function CampaignDetailPage({ params }: { params: { id: str
     .map((r) => r.materials as never as { id: string; name: string; duration_secs: number })
     .filter(Boolean);
 
+  // Full library, and which aren't yet on this campaign (for the picker).
+  const { data: allLibrary } = await supabase.from("materials").select("id, name, duration_secs").order("created_at", { ascending: false });
+  const attachedIds = new Set(materials.map((m) => m.id));
+  const availableMaterials = (allLibrary ?? []).filter((m) => !attachedIds.has(m.id));
+
   // Each segment's chosen material ids (for the edit form).
   const segIds = (segments ?? []).map((s) => s.id);
   const { data: segMatRows } = segIds.length
@@ -133,6 +139,40 @@ export default async function CampaignDetailPage({ params }: { params: { id: str
           </p>
         )}
       </Card>
+
+      {/* Materials on this campaign */}
+      <div className="mt-8">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-base font-semibold text-ink">
+            Materials <span className="text-neutral-400 font-normal">({materials.length})</span>
+          </h2>
+          {isDraft && (
+            <AddMaterialButton campaignId={c.id} available={availableMaterials as never} action={addCampaignMaterial} />
+          )}
+        </div>
+        <div className="mt-4">
+          {materials.length === 0 ? (
+            <EmptyState title="No materials on this campaign"
+              hint={isDraft ? "Add the audio spot(s) this campaign airs — then you can build segments." : "This campaign has no materials."} />
+          ) : (
+            <Card className="divide-y divide-neutral-100">
+              {materials.map((m) => (
+                <div key={m.id} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+                  <span className="font-mono text-xs text-brand w-12">{Math.floor(m.duration_secs/60)}:{String(Math.round(m.duration_secs%60)).padStart(2,"0")}</span>
+                  <span className="text-ink">{m.name}</span>
+                  {isDraft && (
+                    <ActionForm action={removeCampaignMaterial} className="inline ml-auto">
+                      <input type="hidden" name="campaign_id" value={c.id} />
+                      <input type="hidden" name="material_id" value={m.id} />
+                      <button className="text-xs text-red-700 hover:underline">Remove</button>
+                    </ActionForm>
+                  )}
+                </div>
+              ))}
+            </Card>
+          )}
+        </div>
+      </div>
 
       {/* Segments */}
       <div className="mt-8">

@@ -388,3 +388,45 @@ export async function sendAiringProof(formData: FormData): Promise<Result> {
   });
   return res;
 }
+
+// --- Attach / detach materials on a campaign (needed especially for imported
+// campaigns, which arrive with no materials since ECIRS doesn't hold audio) ---
+export async function addCampaignMaterial(formData: FormData): Promise<Result> {
+  if (!(await getIdentity())) return { ok: false, message: "Please sign in." };
+  const campaignId = String(formData.get("campaign_id") ?? "");
+  const materialId = String(formData.get("material_id") ?? "");
+  if (!campaignId || !materialId) return { ok: false, message: "Missing details." };
+
+  const supabase = createClient();
+  const { error } = await supabase.from("campaign_materials")
+    .insert({ campaign_id: campaignId, material_id: materialId });
+  if (error) {
+    if (/duplicate|unique|primary key/i.test(error.message)) return { ok: false, message: "That material is already on this campaign." };
+    return { ok: false, message: error.message };
+  }
+  revalidatePath(`/campaigns/${campaignId}`);
+  return { ok: true, message: "Material added." };
+}
+
+export async function removeCampaignMaterial(formData: FormData): Promise<Result> {
+  if (!(await getIdentity())) return { ok: false, message: "Please sign in." };
+  const campaignId = String(formData.get("campaign_id") ?? "");
+  const materialId = String(formData.get("material_id") ?? "");
+  if (!campaignId || !materialId) return { ok: false, message: "Missing details." };
+
+  const supabase = createClient();
+  // Guard: don't remove a material that a segment still rotates.
+  const { data: segs } = await supabase.from("segments").select("id").eq("campaign_id", campaignId);
+  const segIds = (segs ?? []).map((s) => s.id);
+  if (segIds.length) {
+    const { data: used } = await supabase.from("segment_materials")
+      .select("segment_id").eq("material_id", materialId).in("segment_id", segIds).limit(1);
+    if (used && used.length) return { ok: false, message: "A segment still uses this material — remove it from the segment first." };
+  }
+
+  const { error } = await supabase.from("campaign_materials")
+    .delete().eq("campaign_id", campaignId).eq("material_id", materialId);
+  if (error) return { ok: false, message: error.message };
+  revalidatePath(`/campaigns/${campaignId}`);
+  return { ok: true, message: "Material removed." };
+}
