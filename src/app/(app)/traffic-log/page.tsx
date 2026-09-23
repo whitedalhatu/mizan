@@ -8,6 +8,11 @@ function secsFmt(s: number) { const m = Math.floor(s / 60), sec = s % 60; return
 
 const DAY_KEY = ["runs_sun", "runs_mon", "runs_tue", "runs_wed", "runs_thu", "runs_fri", "runs_sat"];
 
+type Play = {
+  id: string; break_id: string | null; material_id: string; campaign_id: string;
+  air_state: string; shifted: boolean; actual_time: string | null;
+};
+
 export default async function TrafficLogPage({
   searchParams,
 }: { searchParams: { st?: string; date?: string } }) {
@@ -39,12 +44,13 @@ export default async function TrafficLogPage({
 
   // Scheduled plays on this station's breaks for this date.
   const breakIds = breaks.map((b) => b.id);
-  const { data: plays } = breakIds.length
+  const { data: playsRaw } = breakIds.length
     ? await supabase
         .from("scheduled_plays")
         .select("id, break_id, material_id, campaign_id, air_state, shifted, actual_time")
         .eq("play_date", date).in("break_id", breakIds)
-    : { data: [] as Record<string, unknown>[] };
+    : { data: [] };
+  const plays = (playsRaw ?? []) as never as Play[];
 
   // Name lookups.
   const { data: allMats } = await supabase.from("materials").select("id, name, duration_secs");
@@ -55,10 +61,11 @@ export default async function TrafficLogPage({
   const custName = new Map<string, string>((allCust ?? []).map((c) => [c.id, c.name]));
 
   // Group plays by break.
-  const playsByBreak = new Map<string, typeof plays>();
-  (plays ?? []).forEach((p) => {
-    const arr = playsByBreak.get(p.break_id as string) ?? [];
-    arr!.push(p); playsByBreak.set(p.break_id as string, arr);
+  const playsByBreak = new Map<string, Play[]>();
+  plays.forEach((p) => {
+    if (!p.break_id) return;
+    const arr = playsByBreak.get(p.break_id) ?? [];
+    arr.push(p); playsByBreak.set(p.break_id, arr);
   });
 
   return (
