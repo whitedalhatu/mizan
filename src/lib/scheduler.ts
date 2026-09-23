@@ -11,8 +11,9 @@ import "server-only";
 //  - auto-distribute plays across eligible breaks in the segment's hour window
 //  - skip breaks that already hold a competitor (same category)
 //  - skip breaks that are full (break capacity vs spots already placed)
-//  - cascade (Decision 3): if no in-window break works, use an out-of-window
-//    break with room and mark the play shifted, with a reason
+//  - cascade: if no in-window break works, use an out-of-window break with room.
+//    This is normal placement (silent) — NOT "shifted". The shifted flag is only
+//    set later from playout when an ad actually airs at a different time.
 //  - rotate through the segment's materials across the plays
 // =====================================================================
 
@@ -160,19 +161,19 @@ export function planCampaign(input: {
         for (const b of tryOrder(inWin)) {
           if (fits(b, date, spotSecs) && !hasCompetitor(b.id, date)) { chosen = b; break; }
         }
-        let shifted = false;
-        let reason: string | null = null;
-
-        // 2) cascade: out-of-window break with room and no competitor.
+        // 2) cascade: out-of-window break with room and no competitor. This is
+        //    normal placement — the ad simply lands in the nearest available
+        //    break. It is NOT "shifted"; that label is reserved for real
+        //    airing-time differences reported by playout later.
         if (!chosen) {
           for (const b of tryOrder(outWin)) {
-            if (fits(b, date, spotSecs) && !hasCompetitor(b.id, date)) { chosen = b; shifted = true; reason = "No capacity in the requested hours — moved to the nearest available break."; break; }
+            if (fits(b, date, spotSecs) && !hasCompetitor(b.id, date)) { chosen = b; break; }
           }
         }
-        // 3) last resort: in-window break ignoring competitor (still record), else nothing.
+        // 3) last resort: in-window break ignoring competitor, else nothing.
         if (!chosen) {
           for (const b of tryOrder(inWin)) {
-            if (fits(b, date, spotSecs)) { chosen = b; reason = "Placed despite a competing advertiser — no clean break available."; break; }
+            if (fits(b, date, spotSecs)) { chosen = b; break; }
           }
         }
 
@@ -182,7 +183,7 @@ export function planCampaign(input: {
             segment_id: seg.id, material_id: materialId, play_date: date,
             intended_from: seg.hour_from, intended_to: seg.hour_to,
             break_id: chosen.id, actual_time: chosen.start_time,
-            shifted, shift_reason: reason,
+            shifted: false, shift_reason: null,
           });
         } else {
           // Genuinely nowhere to place it — record as an unplaced play so it's visible.
@@ -190,7 +191,7 @@ export function planCampaign(input: {
             segment_id: seg.id, material_id: materialId, play_date: date,
             intended_from: seg.hour_from, intended_to: seg.hour_to,
             break_id: null, actual_time: null,
-            shifted: true, shift_reason: "No break with capacity anywhere that day.",
+            shifted: false, shift_reason: "No break with capacity anywhere that day.",
           });
         }
       }
