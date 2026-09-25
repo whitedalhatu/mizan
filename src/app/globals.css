@@ -26,3 +26,27 @@ body {
   outline: 2px solid var(--accent, #C77D1A);
   outline-offset: 2px;
 }
+
+/* Certificate of Broadcast — print styling. On screen it sits in a card-like
+   document; when printing, only the document shows (nav, buttons hidden) so the
+   browser's Save-as-PDF produces a clean certificate. */
+.cob-doc {
+  background: #fff;
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+  padding: 2rem 2.25rem;
+  max-width: 800px;
+}
+
+@media print {
+  /* Hide everything except the certificate document. */
+  body * { visibility: hidden; }
+  .cob-doc, .cob-doc * { visibility: visible; }
+  .cob-doc {
+    position: absolute; left: 0; top: 0; width: 100%;
+    border: none; border-radius: 0; padding: 1.5rem;
+  }
+  .no-print { display: none !important; }
+  /* Keep the accent bars visible in print (browsers strip backgrounds by default). */
+  .cob-doc .bg-brand { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

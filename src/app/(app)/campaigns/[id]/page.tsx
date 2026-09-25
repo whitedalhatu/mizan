@@ -98,7 +98,12 @@ export default async function CampaignDetailPage({ params }: { params: { id: str
     <div>
       <PageHeader
         title={`#${c.number} · ${c.name}`}
-        action={<Link href="/campaigns" className="text-sm text-brand hover:underline">← Campaigns</Link>}
+        action={
+          <div className="flex items-center gap-4">
+            <Link href={`/campaigns/${c.id}/certificate`} className="text-sm text-brand hover:underline">Certificate of Broadcast</Link>
+            <Link href="/campaigns" className="text-sm text-brand hover:underline">← Campaigns</Link>
+          </div>
+        }
       />
 
       {/* Summary + status controls */}
