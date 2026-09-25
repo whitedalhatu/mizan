@@ -101,7 +101,10 @@ export default async function CampaignDetailPage({ params }: { params: { id: str
         backLabel="Campaigns"
         title={`#${c.number} · ${c.name}`}
         actions={
-          <Link href={`/campaigns/${c.id}/certificate`} className={btnQuiet}>Certificate of Broadcast</Link>
+          <>
+            <Link href={`/campaigns/${c.id}/value`} className={btnQuiet}>Value summary</Link>
+            <Link href={`/campaigns/${c.id}/certificate`} className={btnQuiet}>Certificate of Broadcast</Link>
+          </>
         }
       />
 
