@@ -61,7 +61,10 @@ export default async function CertificatePage({ params }: { params: { id: string
     <div className="cob-root">
       {/* Print controls (hidden when printing) */}
       <div className="no-print mb-4 flex items-center justify-between">
-        <a href={`/campaigns/${c.id}`} className="text-sm text-brand hover:underline">← Back to campaign</a>
+        <a href={`/campaigns/${c.id}`} className="inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-ink transition-colors">
+          <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M12 5l-5 5 5 5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          Back to campaign
+        </a>
         <PrintButton />
       </div>
 
