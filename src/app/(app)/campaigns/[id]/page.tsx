@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { ActionForm, PageHeader, Card, Badge, EmptyState, btn, btnQuiet } from "../../ui";
+import { ActionForm, DetailHeader, Card, Badge, EmptyState, btn, btnQuiet } from "../../ui";
 import { AddSegmentButton } from "./AddSegmentButton";
 import { AddMaterialButton } from "./AddMaterialButton";
 import { setCampaignStatus, createSegment, deleteSegment, generateSchedule, updateCampaign, updateSegment, setPlayAirState, sendAiringProof, addCampaignMaterial, removeCampaignMaterial } from "./actions";
@@ -96,13 +96,12 @@ export default async function CampaignDetailPage({ params }: { params: { id: str
 
   return (
     <div>
-      <PageHeader
+      <DetailHeader
+        backHref="/campaigns"
+        backLabel="Campaigns"
         title={`#${c.number} · ${c.name}`}
-        action={
-          <div className="flex items-center gap-4">
-            <Link href={`/campaigns/${c.id}/certificate`} className="text-sm text-brand hover:underline">Certificate of Broadcast</Link>
-            <Link href="/campaigns" className="text-sm text-brand hover:underline">← Campaigns</Link>
-          </div>
+        actions={
+          <Link href={`/campaigns/${c.id}/certificate`} className={btnQuiet}>Certificate of Broadcast</Link>
         }
       />
 

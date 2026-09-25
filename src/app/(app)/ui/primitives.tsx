@@ -74,3 +74,30 @@ export function EmptyState({
     </div>
   );
 }
+
+// A detail-page header: a small back link on its own row above the title, then
+// the title with optional actions to its right. Keeps the cramped "Title ← Back"
+// pattern out of the single action slot.
+export function DetailHeader({
+  backHref, backLabel, title, subtitle, actions,
+}: {
+  backHref: string; backLabel: string; title: string; subtitle?: string; actions?: React.ReactNode;
+}) {
+  return (
+    <div>
+      <a href={backHref} className="inline-flex items-center gap-1 text-sm text-neutral-500 hover:text-ink transition-colors">
+        <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6">
+          <path d="M12 5l-5 5 5 5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        {backLabel}
+      </a>
+      <div className="mt-2 flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink">{title}</h1>
+          {subtitle && <p className="text-sm text-neutral-500 mt-1">{subtitle}</p>}
+        </div>
+        {actions && <div className="shrink-0 flex items-center gap-3">{actions}</div>}
+      </div>
+    </div>
+  );
+}

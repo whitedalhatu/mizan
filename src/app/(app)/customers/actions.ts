@@ -124,3 +124,36 @@ export async function importContractAsCampaign(formData: FormData): Promise<Resu
   revalidatePath("/campaigns");
   return { ok: true, message: `Campaign ${created.number} created from the contract. Add materials and set the hours, then generate the schedule.`, id: created.id };
 }
+
+// --- Edit a customer's details ---
+export async function updateCustomer(formData: FormData): Promise<Result> {
+  if (!(await getIdentity())) return { ok: false, message: "Please sign in." };
+  const id = String(formData.get("id") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  const categoryId = String(formData.get("category_id") ?? "").trim();
+  const contactName = String(formData.get("contact_name") ?? "").trim();
+  const contactPhone = String(formData.get("contact_phone") ?? "").trim();
+  const standingRateRaw = String(formData.get("standing_spot_rate") ?? "").trim();
+
+  if (!id) return { ok: false, message: "Missing customer." };
+  if (!name) return { ok: false, message: "Name is required." };
+
+  const supabase = createClient();
+  const update: Record<string, unknown> = {
+    name,
+    category_id: categoryId || null,
+    contact_name: contactName || null,
+    contact_phone: contactPhone || null,
+  };
+  // Standing per-spot rate (for agency bill-after campaigns). Blank clears it.
+  update.standing_spot_rate = standingRateRaw ? Number(standingRateRaw) : null;
+
+  const { error } = await supabase.from("customers").update(update).eq("id", id);
+  if (error) {
+    if (/duplicate|unique/i.test(error.message)) return { ok: false, message: `"${name}" already exists.` };
+    return { ok: false, message: error.message };
+  }
+  revalidatePath(`/customers/${id}`);
+  revalidatePath("/customers");
+  return { ok: true, message: "Customer updated." };
+}

@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { fetchEcirsClientContractsDebug } from "@/lib/ecirs";
-import { PageHeader, Card, Badge, EmptyState } from "../../ui";
+import { fetchEcirsClientContracts } from "@/lib/ecirs";
+import { DetailHeader, Card, Badge, EmptyState } from "../../ui";
+import { EditCustomerButton } from "./EditCustomerButton";
 import { ImportContractButton } from "./ImportContractButton";
-import { importContractAsCampaign } from "../actions";
+import { importContractAsCampaign, updateCustomer } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,7 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
   const supabase = createClient();
   const { data: cust } = await supabase
     .from("customers")
-    .select("id, name, source, ecirs_client_id, customer_categories ( name )")
+    .select("id, name, source, ecirs_client_id, category_id, contact_name, contact_phone, standing_spot_rate, customer_categories ( name )")
     .eq("id", params.id).maybeSingle();
   if (!cust) notFound();
 
@@ -27,28 +28,36 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
 
   // MIZAN stations, for the import mapping.
   const { data: stations } = await supabase.from("stations").select("id, code, name").eq("active", true).order("code");
+  const { data: categories } = await supabase.from("customer_categories").select("id, name").eq("active", true).order("name");
 
   // If linked to ECIRS, pull their contracts.
-  let ecirsContracts: Awaited<ReturnType<typeof fetchEcirsClientContractsDebug>>["contracts"] = null;
+  let ecirsContracts: Awaited<ReturnType<typeof fetchEcirsClientContracts>> = null;
   let ecirsError = false;
-  let debugInfo = "";
   if (cust.ecirs_client_id) {
-    const dbg = await fetchEcirsClientContractsDebug(cust.ecirs_client_id);
-    ecirsContracts = dbg.contracts;
-    if (!dbg.reached) { ecirsError = true; debugInfo = "Couldn't reach ECIRS."; }
-    else {
-      debugInfo = `ECIRS responded ${dbg.status}. Client id queried: ${cust.ecirs_client_id}. Contracts returned: ${dbg.contracts?.length ?? 0}.`;
-      if (dbg.status !== 200) { ecirsError = true; debugInfo += " Raw: " + (dbg.raw ?? "").slice(0, 200); }
-    }
+    ecirsContracts = await fetchEcirsClientContracts(cust.ecirs_client_id);
+    if (ecirsContracts === null) ecirsError = true;
   }
   const importedIds = new Set((campaigns ?? []).map((c) => c.ecirs_contract_id).filter(Boolean));
 
   return (
     <div>
-      <PageHeader
+      <DetailHeader
+        backHref="/customers"
+        backLabel="Customers"
         title={cust.name}
-        description={cust.source === "ecirs" ? "Linked to an ECIRS client." : undefined}
-        action={<Link href="/customers" className="text-sm text-brand hover:underline">← Customers</Link>}
+        subtitle={cust.source === "ecirs" ? "Linked to an ECIRS client." : undefined}
+        actions={
+          <EditCustomerButton
+            customer={{
+              id: cust.id, name: cust.name,
+              category_id: (cust as never as { category_id: string | null }).category_id,
+              contact_name: (cust as never as { contact_name: string | null }).contact_name,
+              contact_phone: (cust as never as { contact_phone: string | null }).contact_phone,
+              standing_spot_rate: (cust as never as { standing_spot_rate: number | null }).standing_spot_rate,
+            }}
+            categories={(categories ?? []) as never}
+            action={updateCustomer} />
+        }
       />
 
       {(cust.customer_categories as never as { name: string })?.name && (
@@ -60,7 +69,6 @@ export default async function CustomerDetailPage({ params }: { params: { id: str
         <div className="mt-8">
           <h2 className="text-base font-semibold text-ink">Contracts in ECIRS</h2>
           <p className="text-sm text-neutral-500 mt-0.5">Bring a contract in to start a MIZAN campaign — dates and the sold spot rate come across; you add the audio and hours here.</p>
-          {debugInfo && <p className="mt-1 text-xs text-neutral-400 font-mono break-all">{debugInfo}</p>}
 
           <div className="mt-4">
             {ecirsError ? (
